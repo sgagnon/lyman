@@ -75,7 +75,7 @@ def extract_subject(subj, mask_name, summary_func=np.mean,
 
     ftemp = op.join(ts_dir, "run_{:d}/{}_xfm.nii.gz")
     fstem = "res4d" if residual else "timeseries"
-    ts_files = [ftemp.format(r_i, fstem) for r_i in range(n_runs)]
+    ts_files = [ftemp.format(r_i, fstem) for r_i in range(1, n_runs+1)]
 
     # Get the hash value for this extraction
     cache_hash = hashlib.sha1()

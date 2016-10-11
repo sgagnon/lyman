@@ -27,8 +27,8 @@ def create_volume_mixedfx_workflow(name="volume_group",
                                    subject_list=None,
                                    regressors=None,
                                    contrasts=None,
+                                   groups=None,                                   
                                    exp_info=None):
-
     # Handle default arguments
     if subject_list is None:
         subject_list = []
@@ -45,13 +45,14 @@ def create_volume_mixedfx_workflow(name="volume_group",
                                         "varcopes",
                                         "dofs"]),
                      "inputnode")
-
     # Merge the fixed effect summary images into one 4D image
     merge = Node(MergeAcrossSubjects(regressors=regressors), "merge")
 
     # Make a simple design
-    design = Node(fsl.MultipleRegressDesign(contrasts=contrasts),
-                  "design")
+    if groups is None:
+        design = Node(fsl.MultipleRegressDesign(contrasts=contrasts), "design")
+    else:
+        design = Node(fsl.MultipleRegressDesign(contrasts=contrasts, groups=groups), "design")
 
     # Fit the mixed effects model
     flameo = Node(fsl.FLAMEO(run_mode=exp_info["flame_mode"]), "flameo")
