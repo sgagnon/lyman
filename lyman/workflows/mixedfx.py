@@ -27,7 +27,6 @@ def create_volume_mixedfx_workflow(name="volume_group",
                                    subject_list=None,
                                    regressors=None,
                                    contrasts=None,
-                                   groups=None,                                   
                                    exp_info=None):
     # Handle default arguments
     if subject_list is None:
@@ -49,10 +48,7 @@ def create_volume_mixedfx_workflow(name="volume_group",
     merge = Node(MergeAcrossSubjects(regressors=regressors), "merge")
 
     # Make a simple design
-    if groups is None:
-        design = Node(fsl.MultipleRegressDesign(contrasts=contrasts), "design")
-    else:
-        design = Node(fsl.MultipleRegressDesign(contrasts=contrasts, groups=groups), "design")
+    design = Node(fsl.MultipleRegressDesign(contrasts=contrasts), "design")
 
     # Fit the mixed effects model
     flameo = Node(fsl.FLAMEO(run_mode=exp_info["flame_mode"]), "flameo")
@@ -169,6 +165,152 @@ def create_volume_mixedfx_workflow(name="volume_group",
 
     return group, inputnode, outputnode
 
+def create_volume_mixedfx_workflow_groups(name="volume_group",
+                                   subject_list=None,
+                                   regressors=None,
+                                   contrasts=None,                              
+                                   exp_info=None,
+                                   groups=None):
+    # Handle default arguments
+    if subject_list is None:
+        subject_list = []
+    if regressors is None:
+        regressors = dict(group_mean=[])
+    if contrasts is None:
+        contrasts = [["group_mean", "T", ["group_mean"], [1]]]
+    if exp_info is None:
+        exp_info = lyman.default_experiment_parameters()
+    if groups is None:
+        print 'oh no!'
+        break
+
+    # Define workflow inputs
+    inputnode = Node(IdentityInterface(["l1_contrast",
+                                        "copes",
+                                        "varcopes",
+                                        "dofs"]),
+                     "inputnode")
+    # Merge the fixed effect summary images into one 4D image
+    merge = Node(MergeAcrossSubjectsGroups(regressors=regressors, groups=groups), "merge")
+
+    # Make a simple design
+    design = Node(fsl.MultipleRegressDesign(contrasts=contrasts), "design")
+
+    # Fit the mixed effects model
+    flameo = Node(fsl.FLAMEO(run_mode=exp_info["flame_mode"]), "flameo")
+
+    # Estimate the smoothness of the data
+    smoothest = Node(fsl.SmoothEstimate(), "smoothest")
+
+    # Correct for multiple comparisons
+    cluster = Node(fsl.Cluster(threshold=exp_info["cluster_zthresh"],
+                               pthreshold=exp_info["grf_pthresh"],
+                               out_threshold_file=True,
+                               out_index_file=True,
+                               out_localmax_txt_file=True,
+                               peak_distance=exp_info["peak_distance"],
+                               use_mm=True),
+                   "cluster")
+
+    # Project the mask and thresholded zstat onto the surface
+    surfproj = create_surface_projection_workflow(exp_info=exp_info)
+
+    # Segment the z stat image with a watershed algorithm
+    watershed = Node(Watershed(), "watershed")
+
+    # Make static report images in the volume
+    report = Node(MFXReport(), "report")
+    report.inputs.subjects = subject_list
+
+    # Save the experiment info
+    saveparams = Node(SaveParameters(exp_info=exp_info), "saveparams")
+
+    # Define the workflow outputs
+    outputnode = Node(IdentityInterface(["copes",
+                                         "varcopes",
+                                         "mask_file",
+                                         "flameo_stats",
+                                         "thresh_zstat",
+                                         "surf_zstat",
+                                         "surf_mask",
+                                         "cluster_image",
+                                         "seg_file",
+                                         "peak_file",
+                                         "lut_file",
+                                         "report",
+                                         "json_file"]),
+                      "outputnode")
+
+    # Define and connect up the workflow
+    group = Workflow(name)
+    group.connect([
+        (inputnode, merge,
+            [("copes", "cope_files"),
+             ("varcopes", "varcope_files"),
+             ("dofs", "dof_files")]),
+        (inputnode, saveparams,
+            [("copes", "in_file")]),
+        (merge, flameo,
+            [("cope_file", "cope_file"),
+             ("varcope_file", "var_cope_file"),
+             ("dof_file", "dof_var_cope_file"),
+             ("mask_file", "mask_file")]),
+        (merge, design,
+            [("regressors", "regressors"),
+             ("groups", "groups")]),
+        (design, flameo,
+            [("design_con", "t_con_file"),
+             ("design_grp", "cov_split_file"),
+             ("design_mat", "design_file")]),
+        (flameo, smoothest,
+            [("zstats", "zstat_file")]),
+        (merge, smoothest,
+            [("mask_file", "mask_file")]),
+        (smoothest, cluster,
+            [("dlh", "dlh"),
+             ("volume", "volume")]),
+        (flameo, cluster,
+            [("zstats", "in_file")]),
+        (cluster, watershed,
+            [("threshold_file", "zstat_file"),
+             ("localmax_txt_file", "localmax_file")]),
+        (merge, report,
+            [("mask_file", "mask_file"),
+             ("cope_file", "cope_file")]),
+        (flameo, report,
+            [("zstats", "zstat_file")]),
+        (cluster, report,
+            [("threshold_file", "zstat_thresh_file"),
+             ("localmax_txt_file", "localmax_file")]),
+        (watershed, report,
+            [("seg_file", "seg_file")]),
+        (merge, surfproj,
+            [("mask_file", "inputs.mask_file")]),
+        (cluster, surfproj,
+            [("threshold_file", "inputs.zstat_file")]),
+        (merge, outputnode,
+            [("cope_file", "copes"),
+             ("varcope_file", "varcopes"),
+             ("mask_file", "mask_file")]),
+        (flameo, outputnode,
+            [("stats_dir", "flameo_stats")]),
+        (cluster, outputnode,
+            [("threshold_file", "thresh_zstat"),
+             ("index_file", "cluster_image")]),
+        (watershed, outputnode,
+            [("seg_file", "seg_file"),
+             ("peak_file", "peak_file"),
+             ("lut_file", "lut_file")]),
+        (surfproj, outputnode,
+            [("outputs.surf_zstat", "surf_zstat"),
+             ("outputs.surf_mask", "surf_mask")]),
+        (report, outputnode,
+            [("out_files", "report")]),
+        (saveparams, outputnode,
+            [("json_file", "json_file")]),
+        ])
+
+    return group, inputnode, outputnode
 
 def create_surface_projection_workflow(name="surfproj", exp_info=None):
     """Project the group mask and thresholded zstat file onto the surface."""
@@ -321,6 +463,84 @@ class MergeAcrossSubjects(BaseInterface):
         outputs["regressors"] = self.filtered_regressors
         return outputs
 
+class MergeAcrossSubjectsGroups(BaseInterface):
+
+    input_spec = MergeInput
+    output_spec = MergeOutput
+
+    def _run_interface(self, runtime):
+
+        # Find indices for subjects with non-empty varcopes
+        good_indices = self._find_good_images(self.inputs.varcope_files)
+
+        for ftype in ["cope", "varcope", "dof"]:
+
+            in_files = getattr(self.inputs, ftype + "_files")
+            in_imgs = [nib.load(f) for f in in_files]
+            out_img = self._merge_subject_images(in_imgs, good_indices)
+            out_img.to_filename(ftype + "_merged.nii.gz")
+
+            # Use the varcope image to make a group mask
+            if ftype == "varcope":
+                mask_img = self._create_group_mask(out_img)
+                mask_img.to_filename("group_mask.nii.gz")
+
+        # Filter the regressor columns
+        filtered_regressors = {}
+        for name, col in self.inputs.regressors.items():
+            filtered_col = [r for i, r in enumerate(col)
+                            if i in good_indices]
+            filtered_regressors[name] = filtered_col
+        self.filtered_regressors = filtered_regressors
+
+        # Filter the groups vector
+        filtered_groups = [r for i, r in enumerate(groups) if i in good_indices]
+        self.filtered_groups = filtered_groups
+
+        return runtime
+
+    def _find_good_images(self, filenames):
+        """Find indices of non-empty images."""
+        return [i for i, f in enumerate(filenames)
+                if not np.allclose(nib.load(f).get_data(), 0)]
+
+    def _merge_subject_images(self, images, good_indices=None):
+        """Stack a list of 3D images into 4D image."""
+        if good_indices is None:
+            good_indices = range(len(images))
+        images = [img for i, img in enumerate(images) if i in good_indices]
+        out_img = nib.concat_images(images)
+        return out_img
+
+    def _create_group_mask(self, var_img):
+
+        mni_mask = fsl.Info.standard_image("MNI152_T1_2mm_brain_mask.nii.gz")
+        mni_img = nib.load(mni_mask)
+        mask_data = mni_img.get_data().astype(bool)
+
+        # Find the voxels with positive variance
+        var_data = var_img.get_data()
+        good_var = (var_data > 0).all(axis=-1)
+
+        # Find the intersection
+        mask_data &= good_var
+
+        # Create and return the 3D mask image
+        mask_img = nib.Nifti1Image(mask_data,
+                                   mni_img.get_affine(),
+                                   mni_img.get_header())
+        mask_img.set_data_dtype(np.int16)
+        return mask_img
+
+    def _list_outputs(self):
+
+        outputs = self._outputs().get()
+        for ftype in ["cope", "varcope", "dof"]:
+            outputs[ftype + "_file"] = op.realpath(ftype + "_merged.nii.gz")
+        outputs["mask_file"] = op.realpath("group_mask.nii.gz")
+        outputs["regressors"] = self.filtered_regressors
+        outputs["groups"] = self.filtered_groups
+        return outputs
 
 class WatershedInput(BaseInterfaceInputSpec):
 
