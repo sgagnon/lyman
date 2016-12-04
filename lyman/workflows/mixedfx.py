@@ -28,6 +28,7 @@ def create_volume_mixedfx_workflow(name="volume_group",
                                    regressors=None,
                                    contrasts=None,
                                    exp_info=None):
+
     # Handle default arguments
     if subject_list is None:
         subject_list = []
@@ -166,11 +167,12 @@ def create_volume_mixedfx_workflow(name="volume_group",
     return group, inputnode, outputnode
 
 def create_volume_mixedfx_workflow_groups(name="volume_group",
-                                   subject_list=None,
-                                   regressors=None,
-                                   contrasts=None,                              
-                                   exp_info=None,
-                                   groups=None):
+                                          subject_list=None,
+                                          regressors=None,
+                                          contrasts=None,                              
+                                          exp_info=None,
+                                          groups=None):
+                                          
     # Handle default arguments
     if subject_list is None:
         subject_list = []
