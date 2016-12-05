@@ -45,6 +45,7 @@ def create_volume_mixedfx_workflow(name="volume_group",
                                         "varcopes",
                                         "dofs"]),
                      "inputnode")
+
     # Merge the fixed effect summary images into one 4D image
     merge = Node(MergeAcrossSubjects(regressors=regressors), "merge")
 
@@ -184,7 +185,6 @@ def create_volume_mixedfx_workflow_groups(name="volume_group",
         exp_info = lyman.default_experiment_parameters()
     if groups is None:
         print 'oh no!'
-        break
 
     # Define workflow inputs
     inputnode = Node(IdentityInterface(["l1_contrast",
@@ -192,6 +192,7 @@ def create_volume_mixedfx_workflow_groups(name="volume_group",
                                         "varcopes",
                                         "dofs"]),
                      "inputnode")
+
     # Merge the fixed effect summary images into one 4D image
     merge = Node(MergeAcrossSubjectsGroups(regressors=regressors, groups=groups), "merge")
 
@@ -464,11 +465,31 @@ class MergeAcrossSubjects(BaseInterface):
         outputs["mask_file"] = op.realpath("group_mask.nii.gz")
         outputs["regressors"] = self.filtered_regressors
         return outputs
+        
+        
+class MergeInputGroups(BaseInterfaceInputSpec):
+
+    cope_files = InputMultiPath(File(exists=True))
+    varcope_files = InputMultiPath(File(exists=True))
+    dof_files = InputMultiPath(File(exists=True))
+    regressors = traits.Dict()
+    groups = traits.List()
+
+
+class MergeOutputGroups(TraitedSpec):
+
+    cope_file = File(exists=True)
+    varcope_file = File(exists=True)
+    dof_file = File(exists=True)
+    mask_file = File(exists=True)
+    regressors = traits.Dict()
+    groups = traits.List()
+
 
 class MergeAcrossSubjectsGroups(BaseInterface):
 
-    input_spec = MergeInput
-    output_spec = MergeOutput
+    input_spec = MergeInputGroups
+    output_spec = MergeOutputGroups
 
     def _run_interface(self, runtime):
 
@@ -496,7 +517,7 @@ class MergeAcrossSubjectsGroups(BaseInterface):
         self.filtered_regressors = filtered_regressors
 
         # Filter the groups vector
-        filtered_groups = [r for i, r in enumerate(groups) if i in good_indices]
+        filtered_groups = [r for i, r in enumerate(self.inputs.groups) if i in good_indices]
         self.filtered_groups = filtered_groups
 
         return runtime
