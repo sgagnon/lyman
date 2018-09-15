@@ -57,13 +57,10 @@ def main(arglist):
     
 	# Subject source (no iterables here)
     subject_list = lyman.determine_subjects(args.subjects)
-
-# Additional code from Dan Dillon
-#     59      # Subject source (no iterables here)
-#      60     subject_list = lyman.determine_subjects(args.subjects)
-#      61     subj_source = Node(IdentityInterface(fields=["subject_id"]),
-#      62                        name="subj_source")
-#      63     subj_source.inputs.subject_id = subject_list
+    # Additional code (deletion caught by Dan dillon)
+    subj_source = Node(IdentityInterface(fields=["subject_id"]),
+                       name="subj_source")
+    subj_source.inputs.subject_id = subject_list
 
     print(group_info)
     print(subject_list)
