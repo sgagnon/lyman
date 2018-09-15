@@ -58,7 +58,7 @@ def main(arglist):
 	# Subject source (no iterables here)
     subject_list = lyman.determine_subjects(args.subjects)
 
-# Alternate code, from Dan Dillon
+# Additional code from Dan Dillon
 #     59      # Subject source (no iterables here)
 #      60     subject_list = lyman.determine_subjects(args.subjects)
 #      61     subj_source = Node(IdentityInterface(fields=["subject_id"]),
